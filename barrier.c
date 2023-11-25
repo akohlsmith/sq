@@ -3,7 +3,7 @@
 
 #if defined(WITH_BARRIER) || defined(CYGWIN) || (defined(__APPLE__) && defined (__MACH__))
 
-int barrier_init(barrier_t *barrier,int needed)
+int barrier_init(barrier_t *barrier, int needed)
 {
 	barrier->needed = needed;
 	barrier->called = 0;
