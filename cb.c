@@ -11,7 +11,6 @@
 #include <sys/time.h>
 #include <poll.h>
 
-
 /*
  * need asm/termbits for custom baudrate, but need termios
  * for cfmakeraw/tcflush/etc. Can't have both.
@@ -19,7 +18,7 @@
  * I'm sure I'm holding it wrong.
  */
 #ifdef __linux__
-#if 0
+#if 1
 #include <asm/termbits.h>
 #include <linux/serial.h>
 int tcgetattr(int fd, const struct termios *termios_p);
@@ -27,10 +26,11 @@ int tcsetattr(int fd, int optional_actions, struct termios *termios_p);
 void cfmakeraw(struct termios *termios_p);
 int tcflush(int fd, int queue_selector);
 #else
+#define BOTHER          0x00001000
 #include <termios.h>
 #endif
 
-#else
+#else	 /* not __linux__ */
 #include <termios.h>
 #endif
 
@@ -67,7 +67,7 @@ static int set_speed(int fd, unsigned int speed)
 	ret = ioctl(fd, IOSSIOSPEED, s);
 
 #else
-#if 0
+#if 1
 	struct termios2 tio2;
 
 	if ((ret = ioctl(fd, TCGETS2, &tio2)) == 0) {
@@ -108,8 +108,6 @@ static int open_port(const char *port)
 		return fd;
 	}
 
-	ret = tcgetattr(fd, &tio);
-	memset(&tio, 0, sizeof(tio));
 	cfmakeraw(&tio);
 	tio.c_cc[VMIN] = 0;
 	tio.c_cc[VTIME] = 10;
@@ -120,10 +118,8 @@ static int open_port(const char *port)
 	tio.c_cflag &= ~CREAD;
 	tio.c_cflag |= CLOCAL;
 
-	cfsetispeed(&tio, 5000000);
-	cfsetospeed(&tio, 5000000);
 	if ((ret = tcsetattr(fd, TCSANOW, &tio)) == 0) {
-		//ret = set_speed(fd, 5000000);
+		ret = set_speed(fd, 5000000);
 	}
 
 	/* if things didn't work out, close and return error */
