@@ -13,22 +13,19 @@
 
 /*
  * need asm/termbits for custom baudrate, but need termios
- * for cfmakeraw/tcflush/etc. Can't have both.
+ * for cfmakeraw/tcflush/etc. Can't have both. This is
+ * a way to do it without the conflict.
  *
  * I'm sure I'm holding it wrong.
  */
 #ifdef __linux__
-#if 1
 #include <asm/termbits.h>
-#include <linux/serial.h>
-int tcgetattr(int fd, const struct termios *termios_p);
-int tcsetattr(int fd, int optional_actions, struct termios *termios_p);
+
+#define tcgetattr(a, b) ioctl(a, TCGETS, b)
+#define tcsetattr(a, b, c) ioctl(a, TCSETS, c)
+#define tcflush(a, b) ioctl(a, TCFLSH, b)
+
 void cfmakeraw(struct termios *termios_p);
-int tcflush(int fd, int queue_selector);
-#else
-#define BOTHER          0x00001000
-#include <termios.h>
-#endif
 
 #else	 /* not __linux__ */
 #include <termios.h>
@@ -67,7 +64,6 @@ static int set_speed(int fd, unsigned int speed)
 	ret = ioctl(fd, IOSSIOSPEED, s);
 
 #else
-#if 1
 	struct termios2 tio2;
 
 	if ((ret = ioctl(fd, TCGETS2, &tio2)) == 0) {
@@ -77,18 +73,8 @@ static int set_speed(int fd, unsigned int speed)
 		tio2.c_ospeed = speed;
 		ret = ioctl(fd, TCSETSF2, &tio2);
 	}
-#else
-	struct termios tio;
-	speed_t s;
-
-	s = speed;
-	tcgetattr(fd, &tio);
-	cfsetispeed(&tio, s);
-	cfsetospeed(&tio, s);
-	ret = tcsetattr(fd, TCSANOW, &tio);
 #endif
 
-#endif
 	if (ret != 0) {
 		perror("set_speed");
 	}
