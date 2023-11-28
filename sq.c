@@ -30,16 +30,17 @@ int sq_push(sq_t *q, sq_elem_t *e)
 		}
 	}
 
-	if (q->len >= q->maxlen) {
+	/* either return right away or block if the queue is full */
+	while (q->len >= q->maxlen) {
 		if (q->flags & SQ_FLAG_NOWAIT) {
 			q->flags |= SQ_FLAG_OVERRUN;
 			return SQ_ERR_FULL;
 
+		/* queue is full; wait on q->notfull to wake us */
 		} else {
-			/* queue is full; wait on q->notfull which changes when someone has pop()'d */
-			while (pthread_cond_wait(&q->notfull, &q->mtx)) ;
+			pthread_cond_wait(&q->notfull, &q->mtx);
 		}
-	}
+	};
 
 	/* allocate a new element (and maybe its data too) */
 	alloc_len = sizeof(*e);
@@ -87,6 +88,7 @@ int sq_push(sq_t *q, sq_elem_t *e)
 
 	/* wake up everyone listening on this queue */
 	pthread_mutex_lock(&q->listeners_mtx);
+
 	for (l = q->listeners; l; l = l->next) {
 		//fprintf(stderr, "[%-5s] push wakeup: %p\n", q->name, l->newdata);
 		pthread_cond_broadcast(l->newdata);
