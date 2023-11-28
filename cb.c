@@ -19,11 +19,16 @@
  * I'm sure I'm holding it wrong.
  */
 #ifdef __linux__
+#if 0
 #include <asm/termbits.h>
 #include <linux/serial.h>
-int tcsetattr(int fd, int optional_actions, const struct termios *termios_p);
+int tcgetattr(int fd, const struct termios *termios_p);
+int tcsetattr(int fd, int optional_actions, struct termios *termios_p);
 void cfmakeraw(struct termios *termios_p);
 int tcflush(int fd, int queue_selector);
+#else
+#include <termios.h>
+#endif
 
 #else
 #include <termios.h>
@@ -62,15 +67,31 @@ static int set_speed(int fd, unsigned int speed)
 	ret = ioctl(fd, IOSSIOSPEED, s);
 
 #else
+#if 0
 	struct termios2 tio2;
 
-	ret = ioctl(fd, TCGETS2, &tio2);
-	tio2.c_cflag &= ~CBAUD;
-	tio2.c_cflag |= BOTHER;
-	tio2.c_ispeed = 5000000;
-	tio2.c_ospeed = 5000000;
-	ret = ioctl(fd, TCSETSF2, &tio2);
+	if ((ret = ioctl(fd, TCGETS2, &tio2)) == 0) {
+		tio2.c_cflag &= ~CBAUD;
+		tio2.c_cflag |= BOTHER;
+		tio2.c_ispeed = speed;
+		tio2.c_ospeed = speed;
+		ret = ioctl(fd, TCSETSF2, &tio2);
+	}
+#else
+	struct termios tio;
+	speed_t s;
+
+	s = speed;
+	tcgetattr(fd, &tio);
+	cfsetispeed(&tio, s);
+	cfsetospeed(&tio, s);
+	ret = tcsetattr(fd, TCSANOW, &tio);
 #endif
+
+#endif
+	if (ret != 0) {
+		perror("set_speed");
+	}
 
 	return ret;
 }
@@ -87,18 +108,22 @@ static int open_port(const char *port)
 		return fd;
 	}
 
+	ret = tcgetattr(fd, &tio);
+	memset(&tio, 0, sizeof(tio));
 	cfmakeraw(&tio);
 	tio.c_cc[VMIN] = 0;
 	tio.c_cc[VTIME] = 10;
 
-	//ret = tcgetattr(fd, &tio);
 	tio.c_cflag &= ~(CSTOPB | PARENB | CSIZE);
 	tio.c_cflag |= CS8;
 
 	tio.c_cflag &= ~CREAD;
 	tio.c_cflag |= CLOCAL;
+
+	cfsetispeed(&tio, 5000000);
+	cfsetospeed(&tio, 5000000);
 	if ((ret = tcsetattr(fd, TCSANOW, &tio)) == 0) {
-		ret = set_speed(fd, 5000000);
+		//ret = set_speed(fd, 5000000);
 	}
 
 	/* if things didn't work out, close and return error */
@@ -122,18 +147,23 @@ void *conbatt_thread_main(void *arg)
 
 	/* getopt/etc. here */
 
-	fd = open_port("/dev/ttySC0");
+	if ((fd = open_port("/dev/ttySC0")) < 0) {
+		fprintf(stderr, "cannot open conbatt serial port\n");
+		return NULL;
+	}
 
 	/* wait for all threads to start up */
 	pthread_barrier_wait(t->pb);
 
 	tcflush(fd, TCIOFLUSH);
+	next_tx = 0;
 	do {
 		/* wait one msec for messages from other threads */
 		if (_msg_timedwait(&t->td, 1) == 0) {
 			dequeue(&t->td);
 		}
 
+fprintf(stderr, "foo\n");
 		/* is it time to transmit? */
 		if (now() > next_tx) {
 			_tx(fd);
