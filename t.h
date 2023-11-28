@@ -2,6 +2,12 @@
 #define _T_H_
 
 typedef struct {
+	int argc;
+	char **argv;
+	pthread_barrier_t *pb;
+} thread_t;
+
+typedef struct {
 	const char *name;		/* thread this thread descriptor belongs to */
 	int count;			/* message counter (++ for every message published) */
 	int num_tx, num_rx;		/* number of publish() / pop() this thread has done */
@@ -13,6 +19,8 @@ typedef struct {
 } thread_data_t;
 
 
+#define QUEUE_LENGTH	(64)
+
 unsigned long now(void);
 unsigned long rand_num(unsigned long max);
 void future_ts(struct timespec *ts_out, unsigned int msec);
@@ -20,6 +28,7 @@ int process_msg(const char *tname, sq_elem_t *e);
 sq_elem_t *generate_msg(sq_elem_t *dest_e, const char *tname, const char *s, int val);
 int thread_msg_loop(thread_data_t *td);
 thread_data_t *_td(const char *thread_name, int queue_len);
+int dequeue(thread_data_t *td);
 
 void t1_subscribe(sq_t *q);
 void t2_subscribe(sq_t *q);

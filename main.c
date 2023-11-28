@@ -124,6 +124,31 @@ thread_data_t *_td(const char *thread_name, int queue_len)
 
 	return new_td;
 }
+
+
+/* process all waiting messages */
+int dequeue(thread_data_t *td)
+{
+	int ret;
+	sq_elem_t *e;
+
+	do {
+		ret = sq_pop(td->q, &e);
+		if (ret == SQ_ERR_NO_ERROR) {
+			if (e) {
+				process_msg(td->name, e);
+	 			++td->num_rx;
+			}
+
+		} else if (ret != SQ_ERR_EMPTY) {
+			fprintf(stderr, "[%-5s] sq_pop returned %d\n", td->name, ret);
+		}
+	} while (ret == SQ_ERR_NO_ERROR);
+
+	return ret;
+}
+
+
 /*
  * demo message loop function
  * called by each thread in their own loop
@@ -152,21 +177,7 @@ int thread_msg_loop(thread_data_t *td)
 
 	/* condition var changed */
 	if (ret == 0) {
-		sq_elem_t *e;
-
-		do {
-			ret = sq_pop(td->q, &e);
-			if (ret == SQ_ERR_NO_ERROR) {
-				if (e) {
-					process_msg(td->name, e);
-		 			++td->num_rx;
-				}
-
-			} else if (ret != SQ_ERR_EMPTY) {
-				fprintf(stderr, "[%-5s] sq_pop returned %d\n", td->name, ret);
-			}
-		} while (ret == SQ_ERR_NO_ERROR);
-
+		ret = dequeue(td);
 		did_something = true;
 	}
 

@@ -24,8 +24,13 @@ void t1_subscribe(sq_t *q)
 /* thread 1 listens to messages from thread 2/3 */
 void *thread1(void *arg)
 {
-	int ret;
-	pthread_barrier_t *pb;
+	int ret, fd;
+	thread_t *t;
+	unsigned long next_tx;
+
+	t = (thread_t *)arg;
+
+	/* getopt/etc. here */
 
 	if ((td = _td(THREAD_NAME, QUEUE_LENGTH)) == NULL) {
 		return NULL;
@@ -35,13 +40,20 @@ void *thread1(void *arg)
 	/* wait for all threads to start up */
 	pthread_barrier_wait((pthread_barrier_t *)arg);
 
-	/* subscribe to some other thread's messages */
-	t2_subscribe(td.q);
-	t3_subscribe(td.q);
-
-	td.tx_time = now() + 2000 + rand_num(1000);
 	do {
-		ret = thread_msg_loop(&td);
+		struct timespec ts;
+
+		/* wait for a message to be published to our queue or a timeout */
+		pthread_mutex_lock(&td->nd_mtx);
+		future_ts(&ts, 1);
+
+		if ((ret = pthread_cond_timedwait(&td->newdata, &td->nd_mtx, &ts)) == 0) {
+			dequeue(td);
+		}
+
+		if (now() > next_tx) {
+			next_tx = now() + 10;
+		}
 	} while (ret == 0);
 
 	return NULL;
