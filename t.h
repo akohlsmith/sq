@@ -18,6 +18,49 @@ typedef struct {
 	unsigned long tx_time;		/* when this thread will transmit a new message */
 } thread_data_t;
 
+typedef enum {
+	MSGID_NONE = 0,
+	MSGID_CAN,
+	MSGID_CONBATT,
+	MSGID_BATTERY,
+	MSGID_IO,
+	MSGID_LOG
+} msgid_t;
+
+typedef struct {
+	uint32_t msgid;
+	uint8_t dlc;
+	uint8_t data[64];
+	uint32_t flags;
+} canmsg_t;
+
+typedef struct {
+	uint8_t modulation[4];
+} cbmsg_t;
+
+typedef struct {
+
+} battmsg_t;
+
+typedef struct {
+
+} iomsg_t;
+
+typedef struct {
+
+} logmsg_t;
+
+typedef struct {
+	msgid_t id;
+
+	union {
+		canmsg_t can;
+		cbmsg_t cb;
+		battmsg_t batt;
+		iomsg_t io;
+		logmsg_t log;
+	} u;
+} msg_t;
 
 #define QUEUE_LENGTH	(64)
 
