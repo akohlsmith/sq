@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -9,12 +11,13 @@
 
 #define THREAD_NAME "one"
 
-static thread_data_t td;
+static thread_data_t *td;
 
-/* "subscribe" to this thread's messages */
+
+
 void t1_subscribe(sq_t *q)
 {
-	td.list = sq_list_add(&td.list, q);
+	td->list = sq_list_add(&td->list, q);
 }
 
 
@@ -24,13 +27,10 @@ void *thread1(void *arg)
 	int ret;
 	pthread_barrier_t *pb;
 
-	memset(&td, 0, sizeof(td));
-	td.name = THREAD_NAME;
-	pthread_mutex_init(&td.nd_mtx, NULL);
-	pthread_cond_init(&td.newdata, NULL);
+	if ((td = _td(THREAD_NAME, QUEUE_LENGTH)) == NULL) {
+		return NULL;
+	}
 
-	td.q = sq_init(THREAD_NAME, NULL, 64, SQ_FLAG_NONE);
-	sq_add_listener(td.q, &td.newdata);
 
 	/* wait for all threads to start up */
 	pthread_barrier_wait((pthread_barrier_t *)arg);

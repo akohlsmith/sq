@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
 #include <errno.h>
 #include <pthread.h>
@@ -105,6 +107,23 @@ sq_elem_t *generate_msg(sq_elem_t *dest_e, const char *tname, const char *s, int
 }
 
 
+thread_data_t *_td(const char *thread_name, int queue_len)
+{
+	thread_data_t *new_td;
+
+	if ((new_td = malloc(sizeof(*new_td)))) {
+		memset(new_td, 0, sizeof(*new_td));
+
+		new_td->name = thread_name;
+		pthread_mutex_init(&new_td->nd_mtx, NULL);
+		pthread_cond_init(&new_td->newdata, NULL);
+
+		new_td->q = sq_init(new_td->name, NULL, queue_len, SQ_FLAG_NONE);
+		sq_add_listener(new_td->q, &new_td->newdata);
+	}
+
+	return new_td;
+}
 /*
  * demo message loop function
  * called by each thread in their own loop

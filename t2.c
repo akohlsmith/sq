@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -9,12 +11,12 @@
 
 #define THREAD_NAME "two"
 
-static thread_data_t td;
+static thread_data_t *td;
 
 /* "subscribe" to this thread's messages */
 void t2_subscribe(sq_t *q)
 {
-	td.list = sq_list_add(&td.list, q);
+	td->list = sq_list_add(&td->list, q);
 }
 
 
@@ -22,25 +24,22 @@ void t2_subscribe(sq_t *q)
 void *thread2(void *arg)
 {
 	int ret;
-	pthread_barrier_t *pb;
+	thread_t *t;
 
-	memset(&td, 0, sizeof(td));
-	td.name = THREAD_NAME;
-	pthread_mutex_init(&td.nd_mtx, NULL);
-	pthread_cond_init(&td.newdata, NULL);
+	t = (thread_t *)arg;
 
-	td.q = sq_init(THREAD_NAME, NULL, 64, SQ_FLAG_NONE);
-	sq_add_listener(td.q, &td.newdata);
+	/* getopt/etc. here */
 
-	/* wait for all threads to start up */
-	pthread_barrier_wait((pthread_barrier_t *)arg);
+	if ((td = _td(THREAD_NAME, QUEUE_LENGTH)) == NULL) {
+		return NULL;
+	}
 
 	/* subscribe to some other thread's messages */
-	t1_subscribe(td.q);
+	t1_subscribe(td->q);
 
-	td.tx_time = now() + 2000 + rand_num(1000);
+	td->tx_time = now() + 2000 + rand_num(1000);
 	do {
-		ret = thread_msg_loop(&td);
+		ret = thread_msg_loop(td);
 	} while (ret == 0);
 
 	return NULL;

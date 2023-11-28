@@ -19,6 +19,7 @@ void future_ts(struct timespec *ts_out, unsigned int msec);
 int process_msg(const char *tname, sq_elem_t *e);
 sq_elem_t *generate_msg(sq_elem_t *dest_e, const char *tname, const char *s, int val);
 int thread_msg_loop(thread_data_t *td);
+thread_data_t *_td(const char *thread_name, int queue_len);
 
 void t1_subscribe(sq_t *q);
 void t2_subscribe(sq_t *q);
