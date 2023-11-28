@@ -149,7 +149,7 @@ int _msg_timedwait(thread_data_t *td, unsigned int msec)
 	struct timespec ts;
 
 	pthread_mutex_lock(&td->nd_mtx);
-	future_ts(&ts, 1);
+	future_ts(&ts, msec);
 
 	ret = pthread_cond_timedwait(&td->newdata, &td->nd_mtx, &ts);
 	if (ret != 0) {
