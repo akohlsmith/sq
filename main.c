@@ -45,10 +45,10 @@ void future_ts(struct timespec *ts_out, unsigned int msec)
 	ts_out->tv_sec = t;
 	ts_out->tv_nsec = msec * 1000000;
 
-	if (ts_out->tv_nsec > 1000000000) {
+	while (ts_out->tv_nsec >= 1000000000) {
 		ts_out->tv_nsec -= 1000000000;
 		ts_out->tv_sec += 1;
-	}
+	};
 }
 
 
