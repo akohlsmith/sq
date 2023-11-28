@@ -163,12 +163,13 @@ void *conbatt_thread_main(void *arg)
 			dequeue(&t->td);
 		}
 
-fprintf(stderr, "foo\n");
 		/* is it time to transmit? */
 		if (now() > next_tx) {
 			_tx(fd);
 			next_tx = now() + 10;
 		}
+
+		pthread_mutex_unlock(&t->td.nd_mtx);
 	} while (ret == 0);
 
 	close(fd);
