@@ -150,6 +150,28 @@ int dequeue(thread_data_t *td)
 
 
 /*
+ * returns 0 if we were awoken becuase of the condition variable, or -1 on timeout
+ * NOTE: pthread_cond_timedwait() can return even if the cond var didn't change and
+ * we didn't timeout. This is normal and expected.
+ */
+int _msg_timedwait(thread_data_t *td, unsigned int msec)
+{
+	int ret;
+	struct timespec ts;
+
+	pthread_mutex_lock(&td->nd_mtx);
+	future_ts(&ts, 1);
+
+	ret = pthread_cond_timedwait(&td->newdata, &td->nd_mtx, &ts);
+	if (ret != 0) {
+		ret = -1;
+	}
+
+	return ret;
+}
+
+
+/*
  * demo message loop function
  * called by each thread in their own loop
  * waits 100ms for anyone to send the thread a message
@@ -163,10 +185,8 @@ int thread_msg_loop(thread_data_t *td)
 	struct timespec ts;
 	bool did_something;
 
-	/* wait for a message to be published to our queue or a timeout */
-	pthread_mutex_lock(&td->nd_mtx);
-	future_ts(&ts, 100);
-	ret = pthread_cond_timedwait(&td->newdata, &td->nd_mtx, &ts);
+	/* wait up to 100ms for a message from another thread */
+	ret = _msg_timedwait(td, 100);
 
 	t = now();
 	did_something = false;

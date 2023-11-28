@@ -132,16 +132,12 @@ void *thread1(void *arg)
 
 	tcflush(fd, TCIOFLUSH);
 	do {
-		struct timespec ts;
-
-		/* wait for a message to be published to our queue or a timeout */
-		pthread_mutex_lock(&td->nd_mtx);
-		future_ts(&ts, 1);
-
-		if ((ret = pthread_cond_timedwait(&td->newdata, &td->nd_mtx, &ts)) == 0) {
+		/* wait one msec for messages from other threads */
+		if (_msg_timedwait(td, 1) == 0) {
 			dequeue(td);
 		}
 
+		/* is it time to transmit? */
 		if (now() > next_tx) {
 			_tx(fd);
 			next_tx = now() + 10;

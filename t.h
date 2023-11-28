@@ -72,6 +72,7 @@ sq_elem_t *generate_msg(sq_elem_t *dest_e, const char *tname, const char *s, int
 int thread_msg_loop(thread_data_t *td);
 thread_data_t *_td(const char *thread_name, int queue_len);
 int dequeue(thread_data_t *td);
+int _msg_timedwait(thread_data_t *td, unsigned int msec);
 
 void t1_subscribe(sq_t *q);
 void t2_subscribe(sq_t *q);
