@@ -34,6 +34,9 @@ void *thread3(void *arg)
 		return NULL;
 	}
 
+	/* wait for all threads to start up */
+	pthread_barrier_wait((pthread_barrier_t *)arg);
+
 	/* subscribe to some other thread's messages */
 	t1_subscribe(td->q);
 	t2_subscribe(td->q);
