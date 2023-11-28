@@ -9,19 +9,8 @@
 #include "sq.h"
 #include "t.h"
 
-#define THREAD_NAME "three"
-
-static thread_data_t *td;
-
-/* "subscribe" to this thread's messages */
-void t3_subscribe(sq_t *q)
-{
-	td->list = sq_list_add(&td->list, q);
-}
-
-
 /* thread 3 listens to messages from thread 1/2 */
-void *thread3(void *arg)
+void *can_thread_main(void *arg)
 {
 	int ret;
 	thread_t *t;
@@ -30,20 +19,16 @@ void *thread3(void *arg)
 
 	/* getopt/etc. here */
 
-	if ((td = _td(THREAD_NAME, QUEUE_LENGTH)) == NULL) {
-		return NULL;
-	}
-
 	/* wait for all threads to start up */
-	pthread_barrier_wait((pthread_barrier_t *)arg);
+	pthread_barrier_wait(t->pb);
 
 	/* subscribe to some other thread's messages */
-	t1_subscribe(td->q);
-	t2_subscribe(td->q);
+	conbatt_subscribe(t->td.q);
+	batt_subscribe(t->td.q);
 
-	td->tx_time = now() + 2000 + rand_num(1000);
+	t->td.tx_time = now() + 2000 + rand_num(1000);
 	do {
-		ret = thread_msg_loop(td);
+		ret = thread_msg_loop(&t->td);
 	} while (ret == 0);
 
 	return NULL;

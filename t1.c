@@ -33,10 +33,6 @@ int tcflush(int fd, int queue_selector);
 #include "sq.h"
 #include "t.h"
 
-#define THREAD_NAME "conbatt"
-
-static thread_data_t *td;
-
 static int _tx(int fd)
 {
 	int ret;
@@ -44,7 +40,7 @@ static int _tx(int fd)
 
 	tcflush(fd, TCOFLUSH);
 	if ((ret = write(fd, buf, sizeof(buf))) != sizeof(buf)) {
-		perror("[" THREAD_NAME "] write");
+		perror("[CONBATT] write");
 	}
 
 	return ret;
@@ -59,7 +55,11 @@ static int set_speed(int fd, unsigned int speed)
 #ifndef IOSSIOSPEED
 #define IOSSIOSPEED _IOW('T', 2, speed_t)
 #endif
-	ret = 0;
+
+	speed_t s;
+
+	s = speed;
+	ret = ioctl(fd, IOSSIOSPEED, s);
 
 #else
 	struct termios2 tio2;
@@ -80,11 +80,10 @@ static int open_port(const char *port)
 {
 	int fd, ret;
 	struct termios tio;
-	speed_t s;
 
 	fd = open(port, O_WRONLY | O_NONBLOCK | O_SYNC | O_NOCTTY);
 	if (fd < 0) {
-		perror("[" THREAD_NAME "] open");
+		perror("[CONBATT] open");
 		return fd;
 	}
 
@@ -92,26 +91,28 @@ static int open_port(const char *port)
 	tio.c_cc[VMIN] = 0;
 	tio.c_cc[VTIME] = 10;
 
-    	//ret = tcgetattr(fd, &tio);
+	//ret = tcgetattr(fd, &tio);
 	tio.c_cflag &= ~(CSTOPB | PARENB | CSIZE);
 	tio.c_cflag |= CS8;
 
 	tio.c_cflag &= ~CREAD;
 	tio.c_cflag |= CLOCAL;
-	tcsetattr(fd, TCSANOW, &tio);
+	if ((ret = tcsetattr(fd, TCSANOW, &tio)) == 0) {
+		ret = set_speed(fd, 5000000);
+	}
 
-	set_speed(fd, 5000000);
+	/* if things didn't work out, close and return error */
+	if (ret < 0) {
+		perror("[CONBATT] speed");
+		close(fd);
+		fd = -1;
+	}
+
 	return fd;
 }
 
 
-void t1_subscribe(sq_t *q)
-{
-	td->list = sq_list_add(&td->list, q);
-}
-
-
-void *thread1(void *arg)
+void *conbatt_thread_main(void *arg)
 {
 	int ret, fd;
 	thread_t *t;
@@ -121,20 +122,16 @@ void *thread1(void *arg)
 
 	/* getopt/etc. here */
 
-	if ((td = _td(THREAD_NAME, QUEUE_LENGTH)) == NULL) {
-		return NULL;
-	}
-
 	fd = open_port("/dev/ttySC0");
 
 	/* wait for all threads to start up */
-	pthread_barrier_wait((pthread_barrier_t *)arg);
+	pthread_barrier_wait(t->pb);
 
 	tcflush(fd, TCIOFLUSH);
 	do {
 		/* wait one msec for messages from other threads */
-		if (_msg_timedwait(td, 1) == 0) {
-			dequeue(td);
+		if (_msg_timedwait(&t->td, 1) == 0) {
+			dequeue(&t->td);
 		}
 
 		/* is it time to transmit? */

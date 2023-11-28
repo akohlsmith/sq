@@ -12,6 +12,14 @@
 #include "t.h"
 
 static unsigned long base_t;
+static thread_t *thread_list;
+
+static thread_t *cb_thread, *batt_thread, *can_thread;
+
+static void _sub(thread_data_t *td, sq_t *q) { sq_list_add(&td->list, q); }
+void conbatt_subscribe(sq_t *q) { _sub(&cb_thread->td, q); }
+void batt_subscribe(sq_t *q) { _sub(&batt_thread->td, q); }
+void can_subscribe(sq_t *q) { _sub(&can_thread->td, q); }
 
 /* stupid helper to establish a "base time" to make human reading of time easier */
 static unsigned long _t(void)
@@ -104,25 +112,6 @@ sq_elem_t *generate_msg(sq_elem_t *dest_e, const char *tname, const char *s, int
 	dest_e->flags = SQ_FLAG_VOLATILE | SQ_FLAG_FREE;
 	snprintf(buf, len + 1, fmt, tname, val, s);
 	return dest_e;
-}
-
-
-thread_data_t *_td(const char *thread_name, int queue_len)
-{
-	thread_data_t *new_td;
-
-	if ((new_td = malloc(sizeof(*new_td)))) {
-		memset(new_td, 0, sizeof(*new_td));
-
-		new_td->name = thread_name;
-		pthread_mutex_init(&new_td->nd_mtx, NULL);
-		pthread_cond_init(&new_td->newdata, NULL);
-
-		new_td->q = sq_init(new_td->name, NULL, queue_len, SQ_FLAG_NONE);
-		sq_add_listener(new_td->q, &new_td->newdata);
-	}
-
-	return new_td;
 }
 
 
@@ -232,22 +221,64 @@ int thread_msg_loop(thread_data_t *td)
 }
 
 
+thread_t *_create_thread(const char *name, int argc, char **argv, void *(*thread_main)(void *), int queue_len)
+{
+	static bool first = true;
+	static pthread_barrier_t pb;
+	thread_t *new_thread;
+	thread_data_t *td;
+	int ret;
+
+	/* initialize the barrier if this is our first time */
+	if (first) {
+		pthread_barrier_init(&pb, NULL, 3);
+		first = false;
+	}
+
+	if ((new_thread = malloc(sizeof(*new_thread))) == NULL) {
+		return NULL;
+	}
+
+	memset(new_thread, 0, sizeof(*new_thread));
+	new_thread->argc = argc;
+	new_thread->argv = argv;
+	new_thread->pb = &pb;
+
+	td = &new_thread->td;
+	td->name = name;
+
+	pthread_mutex_init(&td->nd_mtx, NULL);
+	pthread_cond_init(&td->newdata, NULL);
+
+	td->q = sq_init(td->name, NULL, queue_len, SQ_FLAG_NONE);
+	sq_add_listener(td->q, &td->newdata);
+
+	if ((ret = pthread_create(&new_thread->pt, NULL, thread_main, new_thread)) == 0) {
+		new_thread->next = thread_list;
+		thread_list = new_thread;
+
+	} else {
+		/* TODO: properly free whatever resource we've allocated above */
+		/* sq_free(new_thread->td.q); */
+		free(new_thread);
+		new_thread = NULL;
+	}
+
+	return new_thread;
+}
+
 int main(int argc, char **argv)
 {
-	pthread_t t1, t2, t3;
-	pthread_barrier_t pb;
+	thread_t *t;
 
-	pthread_barrier_init(&pb, NULL, 3);
-
-	/* create the threads, passing each the barrier so they can all wait for each other to start up */
-	pthread_create(&t1, NULL, thread1, (void *)&pb);
-	pthread_create(&t2, NULL, thread2, (void *)&pb);
-	pthread_create(&t3, NULL, thread3, (void *)&pb);
+	cb_thread = _create_thread("CONBATT", argc, argv, conbatt_thread_main, QUEUE_LENGTH);
+	batt_thread = _create_thread("BATT", argc, argv, batt_thread_main, QUEUE_LENGTH);
+	can_thread = _create_thread("CAN", argc, argv, can_thread_main, QUEUE_LENGTH);
 
 	/* wait for everyone to quit */
-	pthread_join(t1, NULL);
-	pthread_join(t2, NULL);
-	pthread_join(t3, NULL);
+	for (t = thread_list; t; t = t->next) {
+		pthread_join(t->pt, NULL);
+	}
 
 	return 0;
 }
