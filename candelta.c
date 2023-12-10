@@ -178,11 +178,27 @@ static int _dequeue(thread_data_t *td)
 }
 
 
+static void _dump_list(void)
+{
+	idlist_entry_t *l;
+
+	pthread_mutex_lock(&idlist_mtx);
+
+	printf("CAN IDs\n");
+	for (l = idlist; l; l = l->next) {
+		printf("%03x %5d %4.2f(%4.2f)ms %4.2f(%4.2f)ms\n", l->id, l->num, l->fast.avg/1000.0f, l->fast.peak/1000.0f, l->slow.avg/1000.0f, l->slow.peak/1000.0f);
+	}
+	printf("-------\n\n");
+	pthread_mutex_unlock(&idlist_mtx);
+}
+
+
 /* thread 2 listens to messages from thread 1 */
 void *candelta_thread_main(void *arg)
 {
 	int ret;
 	thread_t *t;
+	uint32_t dump_time;
 
 	t = (thread_t *)arg;
 
@@ -196,11 +212,17 @@ void *candelta_thread_main(void *arg)
 
 	pthread_mutex_init(&idlist_mtx, NULL);
 
+	dump_time = 0;
 	do {
 		if (_msg_timedwait(&t->td, 1000) == 0) {
 			_dequeue(&t->td);
 			pthread_mutex_unlock(&t->td.nd_mtx);
 		}
+
+		if (now() > dump_time) {
+			_dump_list();
+			dump_time = now() + 1000;
+ 		}
 	} while (ret == 0);
 
 	return NULL;
