@@ -94,11 +94,13 @@ static int _rx_can(thread_t *t, int fd)
 			if ((ret = sq_publish(t->td.list, &e)) != SQ_ERR_NO_ERROR) {
 				fprintf(stderr, "[CAN] sq_publish returned %d\n", ret);
 			}
+#if 0
 			fprintf(stderr, "[CAN] rx %03x %02x", f.can_id, f.len);
 			for (i = 0; i < f.len; i++) {
 				fprintf(stderr, " %02hhx", f.data[i]);
 			}
 			fprintf(stderr, "\n");
+#endif
 
 		} else if (ret < 0 && errno != EAGAIN) {
 			perror("[CAN]");

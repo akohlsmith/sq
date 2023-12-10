@@ -15,6 +15,7 @@ static unsigned long base_t;
 static thread_t *thread_list;
 
 static thread_t *cb_thread, *batt_thread, *can_thread;
+static thread_t *candelta_thread;
 
 static void _sub(thread_data_t *td, sq_t *q) { sq_list_add(&td->list, q); }
 void conbatt_subscribe(sq_t *q) { _sub(&cb_thread->td, q); }
@@ -274,6 +275,7 @@ int main(int argc, char **argv)
 	cb_thread = _create_thread("CONBATT", argc, argv, conbatt_thread_main, QUEUE_LENGTH);
 	batt_thread = _create_thread("BATT", argc, argv, batt_thread_main, QUEUE_LENGTH);
 	can_thread = _create_thread("CAN", argc, argv, can_thread_main, QUEUE_LENGTH);
+	candelta_thread = _create_thread("CDELTA", argc, argv, candelta_thread_main, QUEUE_LENGTH);
 
 	/* wait for everyone to quit */
 	for (t = thread_list; t; t = t->next) {
