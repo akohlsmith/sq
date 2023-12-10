@@ -9,6 +9,161 @@
 #include "sq.h"
 #include "t.h"
 
+typedef struct {
+	float alpha;
+	float peak_decay;
+	float avg;
+	float peak;
+} ema_t;
+
+typedef struct idlist_entry_t {
+	struct idlist_entry_t *next;
+
+	uint32_t id;
+	uint32_t usec;
+	uint32_t num;
+	ema_t fast;
+	ema_t slow;
+} idlist_entry_t;
+
+static pthread_mutex_t idlist_mtx;
+static idlist_entry_t *idlist;
+
+
+static void _ema_init(ema_t *ema, float alpha)
+{
+	memset(ema, 0, sizeof(*ema));
+	ema->alpha = alpha;
+}
+
+
+#define SLOW_EMA_ALPHA	(0.2f)
+#define FAST_EMA_ALPHA	(0.8f)
+
+static void _ema_update(ema_t *ema, float val)
+{
+	float x;
+
+	ema->avg = ema->avg * (1.0f - ema->alpha) + val * ema->alpha;
+	ema->peak -= ema->peak_decay;
+
+	if (ema->peak < 0.0f) {
+		ema->peak = 0.0f;
+		ema->peak_decay = 0.0f;
+	}
+
+	if (ema->peak < val) {
+		ema->peak = val;
+		ema->peak_decay = val * 0.025f;
+	}
+}
+
+
+/*
+ * creates and/or updates the idlist_entry_t for a given canmsg
+ * returns the pointer to the list entry or NULL if it couldn't be created.
+ */
+static idlist_entry_t *_update_listentry(idlist_entry_t *l, canmsg_t *c)
+{
+	uint32_t dt;
+
+	if (l == NULL) {
+		if ((l = malloc(sizeof(*l))) == NULL) {
+			return l;
+		}
+
+		memset(l, 0, sizeof(*l));
+		_ema_init(&l->slow, SLOW_EMA_ALPHA);
+		_ema_init(&l->fast, FAST_EMA_ALPHA);
+	}
+
+
+	/* TODO: look at flags, disregard or count bad frames, etc. */
+
+	if (l->usec < c->usec) {
+		/*
+		 * TODO: if this happens more than just the very first time
+		 * then it indicates some kind of odd time issue that should
+		 * be investigated within this utility, not the network itself.
+		 */
+
+		l->usec = c->usec;
+	}
+
+	dt = l->usec - c->usec;
+	_ema_update(&l->slow, (float)dt);
+	_ema_update(&l->fast, (float)dt);
+
+	l->id = c->id;
+	l->usec = c->usec;
+	l->num++;
+	return l;
+}
+
+
+static int _process_one(sq_elem_t *e)
+{
+	canmsg_t *c;
+	idlist_entry_t *l, *last_l;
+
+	c = (canmsg_t *)e->data;
+	pthread_mutex_lock(&idlist_mtx);
+
+	for (l = idlist, last_l = NULL; l; l = l->next) {
+		last_l = l;
+
+		if (l->id == c->id) {
+			break;
+		}
+	}
+
+	/*
+	 * at this point:
+	 *     l points to the list entry for this ID or NULL if we haven't seen it before.
+	 *     last_l points to the last entry in the list or NULL if there is no list.
+	 */
+
+	/* update (or fill out if it's new) the entry data for this ID */
+	_update_listentry(l, c);
+
+	/*
+	 * now add the entry to the end of the list of entries.
+	 * if there is no list of entries, then this entry is
+	 * the start of the list.
+	 */
+	if (last_l) {
+		last_l->next = l;
+	} else {
+		idlist = l;
+	}
+
+	pthread_mutex_unlock(&idlist_mtx);
+}
+
+
+/* process all waiting messages */
+static int _dequeue(thread_data_t *td)
+{
+	int ret;
+	sq_elem_t *e;
+
+	do {
+		ret = sq_pop(td->q, &e);
+		if (ret == SQ_ERR_NO_ERROR) {
+			if (e) {
+				_process_one(e);
+	 			++td->num_rx;
+			}
+
+		} else if (ret != SQ_ERR_EMPTY) {
+			fprintf(stderr, "[%-5s] sq_pop returned %d\n", td->name, ret);
+		}
+	} while (ret == SQ_ERR_NO_ERROR);
+
+	return ret;
+}
+
+
 /* thread 2 listens to messages from thread 1 */
 void *candelta_thread_main(void *arg)
 {
@@ -25,10 +180,12 @@ void *candelta_thread_main(void *arg)
 	/* subscribe to some other thread's messages */
 	can_subscribe(t->td.q);
 
+	pthread_mutex_init(&idlist_mtx, NULL);
+
 	do {
 		if (_msg_timedwait(&t->td, 1000) == 0) {
-			dequeue(&t->td);
-			pthread_mutex_unlock(&t.td->nd_mtx);
+			_dequeue(&t->td);
+			pthread_mutex_unlock(&t->td.nd_mtx);
 		}
 	} while (ret == 0);
 
