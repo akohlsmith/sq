@@ -6,7 +6,7 @@ typedef struct {
 	int count;			/* message counter (++ for every message published) */
 	int num_tx, num_rx;		/* number of publish() / pop() this thread has done */
 	sq_t *q;			/* thread message queue */
-	sq_list_t *list;		/* list of other threads subscribing to this thread's messages */
+	sq_list_t *list;		/* list of other threads' queues subscribing to this thread's messages */
 	pthread_cond_t newdata;		/* this thread's "got new data" condition variable */
 	pthread_mutex_t nd_mtx;		/* mutex protecting newdata */
 	unsigned long tx_time;		/* when this thread will transmit a new message */
@@ -31,7 +31,8 @@ typedef enum {
 } msgid_t;
 
 typedef struct {
-	uint32_t msgid;
+	uint32_t usec;
+	uint32_t id;
 	uint8_t dlc;
 	uint8_t data[64];
 	uint32_t flags;
@@ -84,5 +85,6 @@ void can_subscribe(sq_t *q);
 void *conbatt_thread_main(void *arg);
 void *batt_thread_main(void *arg);
 void *can_thread_main(void *arg);
+void *candelta_thread_main(void *arg);
 
 #endif /* _T_H_ */
