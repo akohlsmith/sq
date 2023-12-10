@@ -88,7 +88,7 @@ static bool _update_listentry(idlist_entry_t **pl, canmsg_t *c)
 
 	/* TODO: look at flags, disregard or count bad frames, etc. */
 
-	if (l->usec < c->usec) {
+	if (l->usec > c->usec) {
 		/*
 		 * TODO: if this happens more than just the very first time
 		 * then it indicates some kind of odd time issue that should
@@ -98,7 +98,7 @@ static bool _update_listentry(idlist_entry_t **pl, canmsg_t *c)
 		l->usec = c->usec;
 	}
 
-	dt = l->usec - c->usec;
+	dt = c->usec - l->usec;
 	_ema_update(&l->slow, (float)dt);
 	_ema_update(&l->fast, (float)dt);
 
