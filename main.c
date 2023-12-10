@@ -6,6 +6,7 @@
 #include <time.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 #include "barrier.h"
 #include "sq.h"
@@ -48,6 +49,7 @@ unsigned long now(void)
 /* creates a timespec which is for some number of msec in the future of the current time */
 void future_ts(struct timespec *ts_out, unsigned int msec)
 {
+#if 0
 	time_t t;
 
 	time(&t);
@@ -58,6 +60,16 @@ void future_ts(struct timespec *ts_out, unsigned int msec)
 		ts_out->tv_nsec -= 1000000000;
 		ts_out->tv_sec += 1;
 	};
+#else
+	struct timeval tv;
+	long nsec;
+
+	gettimeofday(&tv, NULL);
+	nsec = tv.tv_usec * 1000 + msec * 1000000;
+
+	ts_out->tv_sec = tv.tv_sec + (nsec / 1000000000);
+	ts_out->tv_nsec = nsec % 1000000000;
+#endif
 }
 
 

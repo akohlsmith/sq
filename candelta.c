@@ -189,7 +189,86 @@ static void _dump_list(void)
 		printf("%03x %5d %4.2f(%4.2f)ms %4.2f(%4.2f)ms\n", l->id, l->num, l->fast.avg/1000.0f, l->fast.peak/1000.0f, l->slow.avg/1000.0f, l->slow.peak/1000.0f);
 	}
 	printf("-------\n\n");
+
 	pthread_mutex_unlock(&idlist_mtx);
+}
+
+
+/*
+ * creates a JSON string in the format
+ *    "[ [ 1, 2, 3, 4, 5 ], [ 41, 42, 43, 44, 45 ], [ 81, 82, 83, 84, 85 ] ]"
+ * where each number is the time between status frames (ID 0x380 + id) for the given CAN node id
+ *
+ * the resulting pointer should be free()'d when the caller is done with it.
+ */
+static char *_dump_list_json(void)
+{
+	idlist_entry_t *l;
+	int i, phase, node, len;
+	char *s;
+	float vals[3][5];
+
+	/* initialize the list */
+	for (phase = 1; phase <= 3; phase++) {
+		for (node = 1; node <= 5; node++) {
+			vals[phase - 1][node - 1] = 0.0f;
+		}
+	}
+
+	/* now go through the list of seen CAN IDs and pick out the ones we are interested in */
+	pthread_mutex_lock(&idlist_mtx);
+	for (l = idlist; l; l = l->next) {
+
+		switch (l->id) {
+		case 0x381: phase = 1; node = 1; break;
+		case 0x382: phase = 1; node = 2; break;
+		case 0x383: phase = 1; node = 3; break;
+		case 0x384: phase = 1; node = 4; break;
+		case 0x385: phase = 1; node = 5; break;
+		case 0x3a9: phase = 2; node = 1; break;
+		case 0x3aa: phase = 2; node = 2; break;
+		case 0x3ab: phase = 2; node = 3; break;
+		case 0x3ac: phase = 2; node = 4; break;
+		case 0x3ad: phase = 2; node = 5; break;
+		case 0x3d1: phase = 3; node = 1; break;
+		case 0x3d2: phase = 3; node = 2; break;
+		case 0x3d3: phase = 3; node = 3; break;
+		case 0x3d4: phase = 3; node = 4; break;
+		case 0x3d5: phase = 3; node = 5; break;
+		default: phase = 0; break;
+		};
+
+		if (phase > 0) {
+			vals[phase - 1][node - 1] = l->fast.avg / 1000.0f;
+		}
+	}
+	pthread_mutex_unlock(&idlist_mtx);
+
+	/*
+	 * this is just a stupid way to run snprintf() twice.
+	 * the first time, len is 0 so snprintf() will return the amount of data needed.
+	 * the second time we try to allocate the memory and run it again, this time letting
+	 * snprintf() write it out. If the allocation fails, don't let snprintf() write.
+	 */
+	for (i = 0; i < 2; i++) {
+		if (i == 0) {
+			s = NULL;
+			len = 0;
+
+		} else {
+			if ((s = malloc(len)) == NULL) {
+				fprintf(stderr, "couldn't allocate %d bytes for JSON string\n", len);
+				len = 0;
+			}
+		}
+
+		len = snprintf(s, len, "[[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f]]\n",
+			vals[0][0], vals[0][1], vals[0][2], vals[0][3], vals[0][4],
+			vals[1][0], vals[1][1], vals[1][2], vals[1][3], vals[1][4],
+			vals[2][0], vals[2][1], vals[2][2], vals[2][3], vals[2][4]);
+	}
+
+	return s;
 }
 
 
