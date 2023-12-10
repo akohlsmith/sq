@@ -83,12 +83,12 @@ static int set_speed(int fd, unsigned int speed)
 }
 
 
-static int open_port(const char *port)
+static int _open_port(const char *dev)
 {
 	int fd, ret;
 	struct termios tio;
 
-	fd = open(port, O_WRONLY | O_NONBLOCK | O_SYNC | O_NOCTTY);
+	fd = open(dev, O_WRONLY | O_NONBLOCK | O_SYNC | O_NOCTTY);
 	if (fd < 0) {
 		perror("[CONBATT] open");
 		return fd;
@@ -129,7 +129,7 @@ void *conbatt_thread_main(void *arg)
 
 	/* getopt/etc. here */
 
-	if ((fd = open_port("/dev/ttySC0")) < 0) {
+	if ((fd = _open_port("/dev/ttySC0")) < 0) {
 		fprintf(stderr, "cannot open conbatt serial port\n");
 		return NULL;
 	}
