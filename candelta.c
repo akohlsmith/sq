@@ -61,20 +61,28 @@ static void _ema_update(ema_t *ema, float val)
 
 /*
  * creates and/or updates the idlist_entry_t for a given canmsg
- * returns the pointer to the list entry or NULL if it couldn't be created.
+ * returns true if this is a new entry, false otherwise
  */
-static idlist_entry_t *_update_listentry(idlist_entry_t *l, canmsg_t *c)
+static bool _update_listentry(idlist_entry_t **pl, canmsg_t *c)
 {
+	bool is_new;
 	uint32_t dt;
+	idlist_entry_t *l;
 
-	if (l == NULL) {
+	if (*pl == NULL) {
 		if ((l = malloc(sizeof(*l))) == NULL) {
-			return l;
+			return false;
 		}
 
 		memset(l, 0, sizeof(*l));
 		_ema_init(&l->slow, SLOW_EMA_ALPHA);
 		_ema_init(&l->fast, FAST_EMA_ALPHA);
+		*pl = l;
+		is_new = true;
+
+	} else {
+		l = *pl;
+		is_new = false;
 	}
 
 
@@ -97,7 +105,8 @@ static idlist_entry_t *_update_listentry(idlist_entry_t *l, canmsg_t *c)
 	l->id = c->id;
 	l->usec = c->usec;
 	l->num++;
-	return l;
+
+	return is_new;
 }
 
 
@@ -105,6 +114,7 @@ static int _process_one(sq_elem_t *e)
 {
 	canmsg_t *c;
 	idlist_entry_t *l, *last_l;
+	bool is_new;
 
 	c = (canmsg_t *)e->data;
 	pthread_mutex_lock(&idlist_mtx);
@@ -124,17 +134,21 @@ static int _process_one(sq_elem_t *e)
 	 */
 
 	/* update (or fill out if it's new) the entry data for this ID */
-	_update_listentry(l, c);
+	is_new = _update_listentry(&l, c);
 
 	/*
 	 * now add the entry to the end of the list of entries.
 	 * if there is no list of entries, then this entry is
 	 * the start of the list.
 	 */
-	if (last_l) {
-		last_l->next = l;
-	} else {
-		idlist = l;
+	if (is_new) {
+		if (last_l) {
+			fprintf(stderr, "appending to ID %03x for new ID %03x\n", last_l->id, l->id);
+			last_l->next = l;
+		} else {
+			fprintf(stderr, "creating new list starting with ID %03x\n", l->id);
+			idlist = l;
+		}
 	}
 
 	pthread_mutex_unlock(&idlist_mtx);
