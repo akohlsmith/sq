@@ -216,13 +216,13 @@ void *candelta_thread_main(void *arg)
 	do {
 		if (_msg_timedwait(&t->td, 1000) == 0) {
 			_dequeue(&t->td);
-			pthread_mutex_unlock(&t->td.nd_mtx);
 		}
+		pthread_mutex_unlock(&t->td.nd_mtx);
 
 		if (now() > dump_time) {
 			_dump_list();
 			dump_time = now() + 1000;
- 		}
+		}
 	} while (ret == 0);
 
 	return NULL;
