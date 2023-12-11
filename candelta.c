@@ -2,8 +2,18 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <poll.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <pthread.h>
+
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "barrier.h"
 #include "sq.h"
@@ -196,7 +206,7 @@ static void _dump_list(void)
 
 /*
  * creates a JSON string in the format
- *    "[ [ 1, 2, 3, 4, 5 ], [ 41, 42, 43, 44, 45 ], [ 81, 82, 83, 84, 85 ] ]"
+ *    "data: [ [ 1, 2, 3, 4, 5 ], [ 41, 42, 43, 44, 45 ], [ 81, 82, 83, 84, 85 ] ]\n\n"
  * where each number is the time between status frames (ID 0x380 + id) for the given CAN node id
  *
  * the resulting pointer should be free()'d when the caller is done with it.
@@ -262,7 +272,7 @@ static char *_dump_list_json(void)
 			}
 		}
 
-		len = snprintf(s, len, "[[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f]]\n",
+		len = snprintf(s, len, "data: [[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f]]\r\n\r\n",
 			vals[0][0], vals[0][1], vals[0][2], vals[0][3], vals[0][4],
 			vals[1][0], vals[1][1], vals[1][2], vals[1][3], vals[1][4],
 			vals[2][0], vals[2][1], vals[2][2], vals[2][3], vals[2][4]);
@@ -272,16 +282,69 @@ static char *_dump_list_json(void)
 }
 
 
-/* thread 2 listens to messages from thread 1 */
+static int _socket(int port)
+{
+	int fd, val;
+	struct sockaddr_in sa;
+
+	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("socket");
+		return -1;
+	}
+
+	sa.sin_family = AF_INET;
+	sa.sin_addr.s_addr = htonl(INADDR_ANY);
+	sa.sin_port = htons(port);
+
+	val = 1;
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+
+	if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+		perror("bind");
+		close(fd);
+		return -1;
+	}
+
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+
+	if (listen(fd, 1) < 0) {
+		perror("listen");
+		close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
+
+static int _socket_rx(int fd)
+{
+	const char *header = "HTTP/1.0 200 OK\nServer: Foo/1.0 Bar/1.0\nDate: Sat, 09 Dec 2023 22:18:53 GMT\nAccess-Control-Allow-Origin: *\nContent-Type: text/event-stream; charset=utf-8\n\n";
+	char buf[64];
+	int nread;
+
+	do {
+		nread = read(fd, buf, sizeof(buf));
+fprintf(stderr, "_socket_rx(%d) read %d\n", fd, nread);
+	} while (nread == sizeof(buf));
+
+	nread = write(fd, header, strlen(header));
+fprintf(stderr, "wrote %d\n", nread);
+	return 0;
+}
+
+
 void *candelta_thread_main(void *arg)
 {
-	int ret;
-	thread_t *t;
+	int ret, sockfd, client_fd;
 	uint32_t dump_time;
+	struct pollfd pfd[2];
 
 	t = (thread_t *)arg;
 
 	/* getopt/etc. here */
+
+	sockfd = _socket(8089);
 
 	/* wait for all threads to start up */
 	pthread_barrier_wait(t->pb);
@@ -292,16 +355,76 @@ void *candelta_thread_main(void *arg)
 	pthread_mutex_init(&idlist_mtx, NULL);
 
 	dump_time = 0;
+	client_fd = 0;
 	do {
-		if (_msg_timedwait(&t->td, 1000) == 0) {
+		int nfd;
+
+		nfd = 0;
+
+		/* listening fd */
+		pfd[0].fd = sockfd;
+		pfd[0].events = POLLIN | POLLERR;
+		pfd[0].revents = 0;
+		nfd++;
+
+		/* client fd (if connected) */
+		if (client_fd > 0) {
+			pfd[1].fd = client_fd;
+			pfd[1].events = POLLIN | POLLERR;
+			pfd[1].revents = 0;
+			nfd++;
+		}
+
+		if ((ret = poll(&pfd[0], nfd, 10)) > 0) {
+			if (pfd[0].revents & POLLIN) {
+				struct sockaddr_in ca;
+				int ca_len;
+
+				ca_len = sizeof(ca);
+				if ((client_fd = accept(pfd[0].fd, (struct sockaddr *)&ca, &ca_len)) > 0) {
+					//_socket_rx(client_fd);
+					//fprintf(stderr, "new connection\n");
+				}
+			}
+
+			if (pfd[1].revents & POLLIN) {
+fprintf(stderr, "pfd1 IN\n");
+				_socket_rx(client_fd);
+			}
+
+			if (pfd[1].revents & POLLERR) {
+fprintf(stderr, "pfd1 ERR\n");
+				fprintf(stderr, "closed connection\n");
+				close(client_fd);
+				client_fd = 0;
+			}
+		}
+
+		if (ret < 0) {
+			perror("poll");
+		}
+
+		if (_msg_timedwait(&t->td, 10) == 0) {
 			_dequeue(&t->td);
 		}
 		pthread_mutex_unlock(&t->td.nd_mtx);
 
+		/* is it time to dump data? */
 		if (now() > dump_time) {
+			if (client_fd) {
+				char *buf;
+
+				if ((buf = _dump_list_json())) {
+					write(client_fd, buf, strlen(buf));
+					free(buf);
+				}
+			}
+
 			_dump_list();
 			dump_time = now() + 1000;
 		}
+
+		ret = 0;
 	} while (ret == 0);
 
 	return NULL;
