@@ -176,6 +176,9 @@ static int _dequeue(thread_data_t *td)
 		if (ret == SQ_ERR_NO_ERROR) {
 			if (e) {
 				_process_one(e);
+				if (e->flags & SQ_FLAG_FREE) { free(e->data); }
+				if (e->flags & SQ_FLAG_VOLATILE) { free(e); }
+
 	 			++td->num_rx;
 			}
 
