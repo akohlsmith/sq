@@ -20,6 +20,7 @@ int sq_push(sq_t *q, sq_elem_t *e)
 	sq_elem_t *new_e;
 	int alloc_len;
 
+	//fprintf(stderr, "[%-5s] sq_push(q=%p, e=%p, data=%p, len=%d, flags=0x%08x)\n", q->name, q, e, e->data, e->dlen, e->flags);
 	/* use trylock() first in case q->flags has SQ_FLAG_NOWAIT set */
 	if (pthread_mutex_trylock(&q->mtx) != 0) {
 		if (q->flags & SQ_FLAG_NOWAIT) {
@@ -38,6 +39,7 @@ int sq_push(sq_t *q, sq_elem_t *e)
 
 		/* queue is full; wait on q->notfull to wake us */
 		} else {
+			//fprintf(stderr, "[%-5s] - queue full, cond_wait()\n", q->name);
 			pthread_cond_wait(&q->notfull, &q->mtx);
 		}
 	};
@@ -72,6 +74,7 @@ int sq_push(sq_t *q, sq_elem_t *e)
 		new_e->flags = e->flags;
 	}
 
+	//fprintf(stderr, "[%-5s]      new_e=%p, q->head=%p, q->tail=%p\n", q->name, new_e, q->head, q->tail);
 	/* is this the first element in the queue? */
 	if (q->head == NULL) {
 		q->head = new_e;
@@ -84,6 +87,7 @@ int sq_push(sq_t *q, sq_elem_t *e)
 	}
 
 	q->len++;
+	//fprintf(stderr, "[%-5s]      q->head=%p, q->tail=%p, len=%d\n", q->name, q->head, q->tail, q->len);
 	pthread_mutex_unlock(&q->mtx);
 
 	/* wake up everyone listening on this queue */
@@ -229,14 +233,17 @@ sq_list_t *sq_list_add(sq_list_t **list, sq_t *q)
 
 		/* don't add a queue that's already on the list */
 		if (l->q == q) {
+			//fprintf(stderr, "queue for %s already on this list, not adding\n", q->name);
 			free(new_l);
 
 		} else {
+			//fprintf(stderr, "added queue for %s to this list\n", q->name);
 			l->next = new_l;
 		}
 
 	/* this is the first entry in the list */
 	} else {
+		//fprintf(stderr, "empty list, creating new one\n");
 		*list = new_l;
 	}
 
@@ -264,7 +271,7 @@ int sq_publish(sq_list_t *list, sq_elem_t *e)
 			ret = l_ret;
 		}
 
-		//fprintf(stderr, "    [%-5s] push(%p, %p) ret %d\n", l->q->name, l->q, e, l_ret);
+		//fprintf(stderr, "\n[%-5s] publish: push(%p, %p) returned %d\n", l->q->name, l->q, e, l_ret);
 	}
 
 	return ret;
