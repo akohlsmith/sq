@@ -12,7 +12,7 @@
 #include "sq.h"
 #include "t.h"
 
-static unsigned long base_t;
+static unsigned long base_msec;
 static thread_t *thread_list;
 
 static thread_t *cb_thread, *batt_thread, *can_thread;
@@ -27,40 +27,30 @@ void can_subscribe(sq_t *q) { _sub(&can_thread->td, q); }
 static unsigned long _t(void)
 {
 	static bool first = true;
-	time_t t;
+	struct timeval tv;
+	unsigned long msec;
 
-	time(&t);
+	gettimeofday(&tv, NULL);
+	msec = tv.tv_sec * 1000 + tv.tv_usec / 1000;
 	if (first) {
-		base_t = t;
+		base_msec = msec;
 		first = false;
 	}
 
-	return (unsigned long)t - base_t;
+	return msec - base_msec;
 }
 
 
 /* returns the current time in msec */
 unsigned long now(void)
 {
-	return _t() * 1000;
+	return _t();
 }
 
 
 /* creates a timespec which is for some number of msec in the future of the current time */
 void future_ts(struct timespec *ts_out, unsigned int msec)
 {
-#if 0
-	time_t t;
-
-	time(&t);
-	ts_out->tv_sec = t;
-	ts_out->tv_nsec = msec * 1000000;
-
-	while (ts_out->tv_nsec >= 1000000000) {
-		ts_out->tv_nsec -= 1000000000;
-		ts_out->tv_sec += 1;
-	};
-#else
 	struct timeval tv;
 	long nsec;
 
@@ -69,7 +59,6 @@ void future_ts(struct timespec *ts_out, unsigned int msec)
 
 	ts_out->tv_sec = tv.tv_sec + (nsec / 1000000000);
 	ts_out->tv_nsec = nsec % 1000000000;
-#endif
 }
 
 
@@ -79,7 +68,7 @@ unsigned long rand_num(unsigned long max)
 	bool first = true;
 
 	if (first) {
-		srandom(now() + base_t);
+		srandom(now() + base_msec);
 		first = false;
 	}
 
@@ -152,7 +141,7 @@ int dequeue(thread_data_t *td)
 
 
 /*
- * returns 0 if we were awoken becuase of the condition variable, or -1 on timeout
+ * returns 0 if we were awoken because of the condition variable, or -1 on timeout
  * NOTE: pthread_cond_timedwait() can return even if the cond var didn't change and
  * we didn't timeout. This is normal and expected.
  */
