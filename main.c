@@ -233,7 +233,7 @@ thread_t *_create_thread(const char *name, int argc, char **argv, void *(*thread
 
 	/* initialize the barrier if this is our first time */
 	if (first) {
-		pthread_barrier_init(&pb, NULL, 3);
+		pthread_barrier_init(&pb, NULL, 4);
 		first = false;
 	}
 
