@@ -144,6 +144,7 @@ void *conbatt_thread_main(void *arg)
 		if (_msg_timedwait(&t->td, 1) == 0) {
 			dequeue(&t->td);
 		}
+		pthread_mutex_unlock(&t->td.nd_mtx);
 
 		/* is it time to transmit? */
 		if (now() > next_tx) {
@@ -151,7 +152,7 @@ void *conbatt_thread_main(void *arg)
 			next_tx = now() + 10;
 		}
 
-		pthread_mutex_unlock(&t->td.nd_mtx);
+		ret = 0;
 	} while (ret == 0);
 
 	close(fd);
