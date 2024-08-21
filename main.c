@@ -155,6 +155,7 @@ int _msg_timedwait(thread_data_t *td, unsigned int msec)
 
 	ret = pthread_cond_timedwait(&td->newdata, &td->nd_mtx, &ts);
 	if (ret != 0) {
+		//fprintf(stderr, "[%5s] ret=%d\n", td->name, ret);
 		ret = -1;
 	}
 
@@ -167,7 +168,7 @@ int _msg_timedwait(thread_data_t *td, unsigned int msec)
  * called by each thread in their own loop
  * waits 100ms for anyone to send the thread a message
  * processes any messages that were sent our way
- * if it's time to transmit a message of our wn, do so
+ * if it's time to transmit a message of our own, do so
  */
 int thread_msg_loop(thread_data_t *td)
 {
