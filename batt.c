@@ -26,8 +26,11 @@ void *batt_thread_main(void *arg)
 	conbatt_subscribe(t->td.q);
 
 	t->td.tx_time = now() + 2000 + rand_num(1000);
+	ret = 0;
 	do {
-		ret = thread_msg_loop(&t->td);
+//		ret = thread_msg_loop(&t->td);
+		_msg_timedwait(&t->td, 1);
+		pthread_mutex_unlock(&t->td.nd_mtx);
 	} while (ret == 0);
 
 	return NULL;
