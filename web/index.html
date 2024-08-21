@@ -1,27 +1,76 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Raspberry pi monitor</title>
+        <title>CAN Traffic Monitor</title>
         <meta charset="UTF-8">
         <script src="smoothie.js"></script>
         <script type="text/javascript" >
 
+var seriesOptions = [
+  { strokeStyle: 'rgba(255, 0, 0, 1)', fillStyle: 'rgba(255, 0, 0, 0.1)', lineWidth: 3 },
+  { strokeStyle: 'rgba(0, 255, 0, 1)', fillStyle: 'rgba(0, 255, 0, 0.1)', lineWidth: 3 },
+  { strokeStyle: 'rgba(0, 0, 255, 1)', fillStyle: 'rgba(0, 0, 255, 0.1)', lineWidth: 3 },
+  { strokeStyle: 'rgba(255, 255, 0, 1)', fillStyle: 'rgba(255, 255, 0, 0.1)', lineWidth: 3 },
+  { strokeStyle: 'rgba(0, 255, 255, 1)', fillStyle: 'rgba(0, 255, 255, 0.1)', lineWidth: 3 }
+];
+
+function init_status_div(container) {
+  container.style.setProperty('--grid-cols', 64);
+  container.style.setProperty('--grid-rows', 1);
+  for (c = 0; c < 64; c++) {
+    let cell = document.createElement("div");
+    cell.innerText = ' ';
+    container.appendChild(cell).className = "status_bit_off";
+  };
+};
+
+function init_phase(phase_num) {
+  // Initialize an empty TimeSeries for each node.
+  var nodeDataSets = [new TimeSeries(), new TimeSeries(), new TimeSeries(), new TimeSeries(), new TimeSeries()];
+
+  // Build the timeline
+  var timeline = new SmoothieChart({ fps: 30, millisPerPixel: 50, grid: { strokeStyle: '#222222', lineWidth: 1, millisPerLine: 1000, verticalSections: 4}, tooltip: true, responsive: true});
+  for (var i = 0; i < nodeDataSets.length; i++) {
+    timeline.addTimeSeries(nodeDataSets[i], seriesOptions[i]);
+  }
+
+  timeline.streamTo(document.getElementById('phase' + phase_num), 1000);
+  return nodeDataSets;
+}
+
             function init() {
-                var tempdataset = new TimeSeries()
-                var templine = new SmoothieChart({ fps: 30, millisPerPixel: 200, grid: { strokeStyle: '#555555', lineWidth: 3, millisPerLine: 5000, verticalSections: 4}, tooltip: true});
-                templine.addTimeSeries(tempdataset);
-                templine.streamTo(document.getElementById('pitempchart'), 1000);
+		var p1 = init_phase(1);
+		var p2 = init_phase(2);
+		var p3 = init_phase(3);
+
+		for (phase = 1; phase <= 3; phase++) {
+                  for (node = 1; node <= 5; node++) {
+                    var c = document.getElementById('p' + phase + 'n' + node + '_status');
+                    init_status_div(c);
+                  }
+                }
 
                 if (!!window.EventSource) {
-                    var esource = new EventSource('ssupdates.html');
-                    esource.addEventListener('message', function(e) {
-                        var newinfo=JSON.parse(e.data);
-                        tempdataset.append(Date.now(),newinfo, newinfo)
-                    }, false);
+                    console.log("no window.EventSource, creating one...");
+
+                    //var esource = new EventSource('ssupdates.html');
+                    var esource = new EventSource('http://192.168.78.2:8089');
+                    esource.onmessage = (e) => {
+                        var j = JSON.parse(e.data);
+                        for (var i = 0; i < p1.length; i++) {
+                            p1[i].append(Date.now(), j.status_deltas[0][i])
+                            p2[i].append(Date.now(), j.status_deltas[1][i])
+                            p3[i].append(Date.now(), j.status_deltas[2][i])
+                        }
+
+                        document.getElementById('log').value += e.data + "\n";
+                    };
+
                     esource.addEventListener('open', function(e) {
                         var tempel = document.getElementById("note");
-                        tempel.innerHTML="update Connection established"
+                        tempel.innerHTML="Connection established"
                     }, false);
+
                     esource.addEventListener('error', function(e) {
                         if (e.readyState == EventSource.CLOSED) {
                             var tempel = document.getElementById("note");
@@ -35,12 +84,99 @@
                 }
             }
         
+            function clearlog() {
+                document.getElementById('log').value = "Log cleared.\n";
+            }
             
         </script>
+        <style>
+:root {
+  --grid-cols: 1;
+  --grid-rows: 1;
+}
+
+.all_phase_container {
+  width: 100%;
+  display: inline-block;
+}
+
+.one_phase_container {
+  display: grid;
+  grid-template-columns: 67% 33%;
+  height: 100px;
+}
+
+.phase_status_container {
+  display: grid;
+  grid-row-gap: 1fr;
+  width: 100%;
+}
+
+.node_status_container {
+  display: grid;
+  grid-template-rows: repeat(var(--grid-rows), 1fr);
+  grid-template-columns: repeat(var(--grid-cols), 1fr);
+}
+
+.status_bit_off {
+  display: inline-block;
+  background-color:#ffffff;
+  border: 1px solid #000000
+}
+  
+.status_bit_on {
+  display: inline-block;
+  background-color:#800000;
+  border: 1px solid #000000;
+}
+  
+.log_container {
+  width: 100%;
+  height: 250px;
+  display: block;
+}
+        </style>
     </head>
     <body onload="init()">
-          <h1>This is your Raspberry pi</h1>
+          <h1>CAN Traffic Monitor</h1>
           <p id="note">blank</p>
-          <canvas id="pitempchart" width="400" height="100"></canvas>
+          <div class="all_phase_container" /*style="background-color:#FFF4A3;"*/>
+              <div id="phase1_container" class="one_phase_container" /*style="background-color:#eeF4A3;"*/>
+                  <canvas id="phase1" style="width: 100%; height: 100px;"></canvas>
+                  <div id="phase1_status" class="phase_status_container">
+                      <div id="p1n1_status" class="node_status_container"></div>
+                      <div id="p1n2_status" class="node_status_container"></div>
+                      <div id="p1n3_status" class="node_status_container"></div>
+                      <div id="p1n4_status" class="node_status_container"></div>
+                      <div id="p1n5_status" class="node_status_container"></div>
+                  </div>
+              </div>
+              <div style="height: 10px;"></div>
+              <div id="phase2_container" class="one_phase_container" /*style="background-color:#ddF4A3;"*/>
+                  <canvas id="phase2" style="width: 100%; height: 100px;"></canvas>
+                  <div id="phase2_status" class="phase_status_container">
+                      <div id="p2n1_status" class="node_status_container"></div>
+                      <div id="p2n2_status" class="node_status_container"></div>
+                      <div id="p2n3_status" class="node_status_container"></div>
+                      <div id="p2n4_status" class="node_status_container"></div>
+                      <div id="p2n5_status" class="node_status_container"></div>
+                  </div>
+              </div>
+              <div style="height: 10px;"></div>
+              <div id="phase3_container" class="one_phase_container" /*style="background-color:#ccF4A3;"*/>
+                  <canvas id="phase3" style="width: 100%; height: 100px;"></canvas>
+		  <div id="phase3_status" class="phase_status_container">
+		      <div id="p3n1_status" class="node_status_container"></div>
+		      <div id="p3n2_status" class="node_status_container"></div>
+		      <div id="p3n3_status" class="node_status_container"></div>
+		      <div id="p3n4_status" class="node_status_container"></div>
+		      <div id="p3n5_status" class="node_status_container"></div>
+		  </div>
+              </div>
+          </div>
+          <div class="log_container" /*style="background-color:#FFC0C7;"*/>
+              <div><textarea id="log" readonly="true" wrap="hard" style="width: 100%; height: 250px;"></textarea></div>
+              <div><button onclick="clearlog()">Clear</button></div>
+          </div>
     </body>
 </html>

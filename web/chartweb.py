@@ -10,33 +10,46 @@ import time
 import errno
 
 class camhandler(http.server.BaseHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin:', '*')
+        http.server.SimpleHTTPRequestHandler.end_headers(self)
+
     def do_GET(self):
         pr = urlparse(self.path)
         pf = pr.path.split('/')
+
         if pf[-1] == 'ssupdates.html':
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
                 self.end_headers()
-                ctr=456
+
                 running=True
                 while running:
                     with open('/sys/class/thermal/thermal_zone0/temp') as cput:
-                        tstr= int(cput.readline().strip())/1000
-                    datats=json.dumps(tstr)
+                        tstr = int(cput.readline().strip())/1000
+                    datats = "["
+                    datats += "[" + json.dumps(tstr) + "," + json.dumps(tstr/2) + "," + json.dumps(tstr*2/3) + "," + json.dumps(100-tstr) + "," + json.dumps(100-tstr/3) + "],"
+                    datats += "[" + json.dumps(tstr/3) + "," + json.dumps(tstr) + "," + json.dumps(100-tstr*2/3) + "," + json.dumps(tstr/2) + "," + json.dumps(100-tstr/2) + "],"
+                    datats += "[" + json.dumps(tstr+.5*tstr) + "," + json.dumps(100-tstr/2) + "," + json.dumps(tstr) + "," + json.dumps(50+tstr) + "," + json.dumps(tstr/3) + "]"
+                    datats += "]"
+                    print(datats)
+
                     try:
                         self.wfile.write(('data: %s\n\n' % datats).encode('utf-8'))
                     except Exception as e:
                         running=False
                         if e.errno!=errno.EPIPE:
                             raise
-                    ctr +=1
-                    time.sleep(2.5)
+
+                    time.sleep(1.0)
+
         elif pf[-1] == '' or pf[-1] == 'index.html':
             print("send index")
             sfp=Path('index.html')
             with sfp.open('r') as sfile:
                 xs=sfile.read()
                 self.simpleSend(xs)
+
         elif pf[-1] == 'smoothie.js':
             print("send smoothie.js")
             sfp=Path('smoothie.js')
@@ -46,6 +59,7 @@ class camhandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'text/javascript')
             self.end_headers()
             self.wfile.write(xs)
+
         else:
             print("what is", pf[-1])
             print(pf)
