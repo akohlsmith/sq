@@ -208,9 +208,15 @@ static void _dump_list(void)
 
 
 /*
- * creates a JSON string in the format
- *    "data: [ [ 1, 2, 3, 4, 5 ], [ 41, 42, 43, 44, 45 ], [ 81, 82, 83, 84, 85 ] ]\n\n"
+ * creates a string suitable for consumption by a javascript eventListener.
+ * The string is a message event with JSON payload in the format
+ *    "status_deltas: [ [ 1, 2, 3, 4, 5 ], [ 41, 42, 43, 44, 45 ], [ 81, 82, 83, 84, 85 ] ]\n\n"
  * where each number is the time between status frames (ID 0x380 + id) for the given CAN node id
+ *
+ * the full string looks like this:
+ *
+ * event: message
+ * data: { "status_deltas": [[1,2,3,4,5],[41,42,43,44,45],[81,82,83,84,85]] }
  *
  * the resulting pointer should be free()'d when the caller is done with it.
  */
@@ -275,7 +281,7 @@ static char *_dump_list_json(void)
 			}
 		}
 
-		len = snprintf(s, len, "data: [[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f]]\r\n\r\n",
+		len = snprintf(s, len, "event: message\r\ndata: { \"status_deltas\": [[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f,%.2f]]}\r\n\r\n",
 			vals[0][0], vals[0][1], vals[0][2], vals[0][3], vals[0][4],
 			vals[1][0], vals[1][1], vals[1][2], vals[1][3], vals[1][4],
 			vals[2][0], vals[2][1], vals[2][2], vals[2][3], vals[2][4]);
@@ -322,7 +328,7 @@ static int _socket(int port)
 
 static int _socket_rx(int fd)
 {
-	const char *header = "HTTP/1.0 200 OK\nServer: Foo/1.0 Bar/1.0\nDate: Sat, 09 Dec 2023 22:18:53 GMT\nAccess-Control-Allow-Origin: *\nContent-Type: text/event-stream; charset=utf-8\n\n";
+	const char *header = "HTTP/1.0 200 OK\nServer: Foo/1.0 Bar/1.0\nDate: Sat, 09 Dec 2023 22:18:53 GMT\nAccess-Control-Allow-Origin: *\nContent-Type: text/event-stream; charset=utf-8\nCache-Control: no-cache\nConnection: keep-alive\n\n";
 	char buf[64];
 	int nread;
 
@@ -342,6 +348,7 @@ void *candelta_thread_main(void *arg)
 	int ret, sockfd, client_fd;
 	uint32_t dump_time;
 	struct pollfd pfd[2];
+	thread_t *t;
 
 	t = (thread_t *)arg;
 
